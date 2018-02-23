@@ -21,6 +21,7 @@ const {
 const { async_id_fields, constants: asyncConsts } = process.binding('async_wrap')
 const { kAsyncIdCounter, kDefaultTriggerAsyncId } = asyncConsts
 const kOnExecute = HTTPParser.kOnExecute | 0
+const defTimeout = 2 * 60 * 1000
 
 // symbols
 const outHeadersKey = Symbol('outHeadersKey')
@@ -246,7 +247,7 @@ function Server (options, requestListener) {
 
   this.on('connection', connectionListener)
 
-  this.timeout = 2 * 60 * 1000
+  this.timeout = defTimeout
   this.keepAliveTimeout = 5000
   this._pendingResponseData = 0
   this.maxHeadersCount = null
@@ -255,7 +256,7 @@ util.inherits(Server, net.Server)
 
 Server.prototype.setTimeout = function setTimeout (msecs, callback) {
   this.timeout = msecs
-  if (callback) { this.on('timeout', callback) }
+  if (callback) this.on('timeout', callback)
   return this
 }
 

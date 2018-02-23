@@ -1,18 +1,15 @@
 {
   "name": "http-lite",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A minimalistic take on Node's `http` module",
   "engines": {
-    "node": ">=6.0.0"
+    "node": ">=9.0.0"
   },
   "main": "index.js",
   "files": [
     "index.js"
   ],
-  "scripts": {
-    "test": "ava --verbose",
-    "precommit": "ava"
-  },
+  "scripts": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/doesdev/http-lite.git"
