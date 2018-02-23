@@ -1,4 +1,4 @@
-# http-lite [![NPM version](https://badge.fury.io/js/http-lite.svg)](https://npmjs.org/package/http-lite)   [![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)   [![Dependency Status](https://dependencyci.com/github/doesdev/http-lite/badge)](https://dependencyci.com/github/doesdev/http-lite)
+# http-minimal [![NPM version](https://badge.fury.io/js/http-minimal.svg)](https://npmjs.org/package/http-minimal)   [![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)   [![Dependency Status](https://dependencyci.com/github/doesdev/http-minimal/badge)](https://dependencyci.com/github/doesdev/http-minimal)
 
 > A minimalistic take on Node's `http` module
 

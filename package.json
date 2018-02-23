@@ -1,5 +1,5 @@
 {
-  "name": "http-lite",
+  "name": "http-minimal",
   "version": "0.1.0",
   "description": "A minimalistic take on Node's `http` module",
   "engines": {
@@ -12,14 +12,14 @@
   "scripts": {},
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/doesdev/http-lite.git"
+    "url": "git+https://github.com/doesdev/http-minimal.git"
   },
   "author": "Andrew Carpenter (https://github.com/doesdev)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/doesdev/http-lite/issues"
+    "url": "https://github.com/doesdev/http-minimal/issues"
   },
-  "homepage": "https://github.com/doesdev/http-lite#readme",
+  "homepage": "https://github.com/doesdev/http-minimal#readme",
   "dependencies": {},
   "devDependencies": {
     "ava": "^0.25.0",
