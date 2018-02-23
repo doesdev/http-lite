@@ -11,7 +11,6 @@ const assert = require('assert').ok
 const {
   parsers,
   freeParser,
-  debug,
   CRLF,
   continueExpression,
   chunkExpression,
@@ -30,10 +29,12 @@ const kServerResponse = Symbol('ServerResponse')
 
 // async hook stuff from 'internal/async_hooks'
 const newAsyncId = () => ++async_id_fields[kAsyncIdCounter]
+
 const getOrSetAsyncId = (object) => {
   if (object.hasOwnProperty(asyncIdSymbol)) return object[asyncIdSymbol]
   return (object[asyncIdSymbol] = newAsyncId())
 }
+
 function defaultTriggerAsyncIdScope (triggerAsyncId, block, ...args) {
   const oldDefaultTriggerAsyncId = async_id_fields[kDefaultTriggerAsyncId]
   async_id_fields[kDefaultTriggerAsyncId] = triggerAsyncId
@@ -115,13 +116,10 @@ const STATUS_CODES = {
 
 function ServerResponse (req) {
   OutgoingMessage.call(this)
-
   if (req.method === 'HEAD') this._hasBody = false
-
   this.sendDate = true
   this._sent100 = false
   this._expect_continue = false
-
   if (req.httpVersionMajor < 1 || req.httpVersionMinor < 1) {
     this.useChunkedEncodingByDefault = chunkExpression.test(req.headers.te)
     this.shouldKeepAlive = false
@@ -130,9 +128,6 @@ function ServerResponse (req) {
 util.inherits(ServerResponse, OutgoingMessage)
 
 ServerResponse.prototype._finish = function _finish () {
-  // DTRACE_HTTP_SERVER_RESPONSE(this.connection)
-  // LTTNG_HTTP_SERVER_RESPONSE(this.connection)
-  // COUNTER_HTTP_SERVER_RESPONSE()
   OutgoingMessage.prototype._finish.call(this)
 }
 
@@ -140,24 +135,6 @@ ServerResponse.prototype.statusCode = 200
 ServerResponse.prototype.statusMessage = undefined
 
 function onServerResponseClose () {
-  // EventEmitter.emit makes a copy of the 'close' listeners array before
-  // calling the listeners. detachSocket() unregisters onServerResponseClose
-  // but if detachSocket() is called, directly or indirectly, by a 'close'
-  // listener, onServerResponseClose is still in that copy of the listeners
-  // array. That is, in the example below, b still gets called even though
-  // it's been removed by a:
-  //
-  //   var EventEmitter = require('events');
-  //   var obj = new EventEmitter();
-  //   obj.on('event', a);
-  //   obj.on('event', b);
-  //   function a() { obj.removeListener('event', b) }
-  //   function b() { throw "BAM!" }
-  //   obj.emit('event');  // throws
-  //
-  // Ergo, we need to deal with stale 'close' events and handle the case
-  // where the ServerResponse object has already been deconstructed.
-  // Fortunately, that requires only a single if check. :-)
   if (this._httpMessage) this._httpMessage.emit('close')
 }
 
@@ -193,32 +170,27 @@ ServerResponse.prototype._implicitHeader = function _implicitHeader () {
 
 ServerResponse.prototype.writeHead = writeHead
 function writeHead (statusCode, reason, obj) {
-  var originalStatusCode = statusCode
+  let originalStatusCode = statusCode
+  let code = statusCode |= 0
 
-  statusCode |= 0
-  if (statusCode < 100 || statusCode > 999) {
+  if (code < 100 || code > 999) {
     throw new RangeError('ERR_HTTP_INVALID_STATUS_CODE', originalStatusCode)
   }
 
-  if (typeof reason === 'string') {
-    // writeHead(statusCode, reasonPhrase[, headers])
-    this.statusMessage = reason
-  } else {
-    // writeHead(statusCode[, headers])
-    if (!this.statusMessage) {
-      this.statusMessage = STATUS_CODES[statusCode] || 'unknown'
-    }
-    obj = reason
-  }
-  this.statusCode = statusCode
+  let reasonIsString = typeof reason === 'string'
+  this.statusMessage = !reasonIsString
+    ? (this.statusMessage || STATUS_CODES[code] || 'unknown')
+    : reason
+  if (!reasonIsString) obj = reason
+  this.statusCode = code
 
-  var headers
+  let headers
   if (this[outHeadersKey]) {
     // Slow-case: when progressive API and header fields are passed.
-    var k
+    let k
     if (obj) {
-      var keys = Object.keys(obj)
-      for (var i = 0; i < keys.length; i++) {
+      let keys = Object.keys(obj)
+      for (let i = 0; i < keys.length; i++) {
         k = keys[i]
         if (k) this.setHeader(k, obj[k])
       }
@@ -237,28 +209,14 @@ function writeHead (statusCode, reason, obj) {
     throw new Error('ERR_INVALID_CHAR', 'statusMessage')
   }
 
-  var statusLine = `HTTP/1.1 ${statusCode} ${this.statusMessage}${CRLF}`
-
-  if (statusCode === 204 || statusCode === 304 ||
-      (statusCode >= 100 && statusCode <= 199)) {
-    // RFC 2616, 10.2.5:
-    // The 204 response MUST NOT include a message-body, and thus is always
-    // terminated by the first empty line after the header fields.
-    // RFC 2616, 10.3.5:
-    // The 304 response MUST NOT contain a message-body, and thus is always
-    // terminated by the first empty line after the header fields.
-    // RFC 2616, 10.1 Informational 1xx:
-    // This class of status code indicates a provisional response,
-    // consisting only of the Status-Line and optional headers, and is
-    // terminated by an empty line.
+  let statusLine = `HTTP/1.1 ${code} ${this.statusMessage}${CRLF}`
+  if (code === 204 || code === 304 || (code >= 100 && code <= 199)) {
     this._hasBody = false
   }
 
   // don't keep alive connections where the client expects 100 Continue
   // but we sent a final status; they may put extra bytes on the wire.
-  if (this._expect_continue && !this._sent100) {
-    this.shouldKeepAlive = false
-  }
+  if (this._expect_continue && !this._sent100) this.shouldKeepAlive = false
 
   this._storeHeader(statusLine, headers)
 }
@@ -269,10 +227,11 @@ ServerResponse.prototype.writeHeader = ServerResponse.prototype.writeHead
 function Server (options, requestListener) {
   if (!(this instanceof Server)) return new Server(options, requestListener)
 
-  if (typeof options === 'function') {
+  let optionsType = typeof options
+  if (optionsType === 'function') {
     requestListener = options
     options = {}
-  } else if (options == null || typeof options === 'object') {
+  } else if (options == null || optionsType === 'object') {
     options = Object.assign({}, options)
   }
 
@@ -281,13 +240,8 @@ function Server (options, requestListener) {
 
   net.Server.call(this, { allowHalfOpen: true })
 
-  if (requestListener) {
-    this.on('request', requestListener)
-  }
+  if (requestListener) this.on('request', requestListener)
 
-  // Similar option to this. Too lazy to write my own docs.
-  // http://www.squid-cache.org/Doc/config/half_closed_clients/
-  // http://wiki.squid-cache.org/SquidFaq/InnerWorkings#What_is_a_half-closed_filedescriptor.3F
   this.httpAllowHalfOpen = false
 
   this.on('connection', connectionListener)
@@ -312,47 +266,33 @@ function connectionListener (socket) {
 }
 
 function connectionListenerInternal (server, socket) {
-  debug('SERVER new http connection')
-
   httpSocketSetup(socket)
+  if (socket.server === null) socket.server = server
 
-  // Ensure that the server property of the socket is correctly set.
-  // See https://github.com/nodejs/node/issues/13435
-  if (socket.server === null) {
-    socket.server = server
+  if (server.timeout && typeof socket.setTimeout === 'function') {
+    socket.setTimeout(server.timeout)
   }
-
-  // If the user has added a listener to the server,
-  // request, or response, then it's their responsibility.
-  // otherwise, destroy on timeout by default
-  if (server.timeout && typeof socket.setTimeout === 'function') { socket.setTimeout(server.timeout) }
   socket.on('timeout', socketOnTimeout)
 
-  var parser = parsers.alloc()
+  let parser = parsers.alloc()
   parser.reinitialize(HTTPParser.REQUEST)
   parser.socket = socket
   socket.parser = parser
   parser.incoming = null
 
-  // Propagate headers limit from server instance to parser
   if (typeof server.maxHeadersCount === 'number') {
     parser.maxHeaderPairs = server.maxHeadersCount << 1
   } else {
-    // Set default value because parser may be reused from FreeList
     parser.maxHeaderPairs = 2000
   }
 
-  var state = {
+  let state = {
     onData: null,
     onEnd: null,
     onClose: null,
     onDrain: null,
     outgoing: [],
     incoming: [],
-    // `outgoingData` is an approximate amount of bytes queued through all
-    // inactive responses. If more data than the high watermark is queued - we
-    // need to pause TCP socket/HTTP parser, and wait until the data will be
-    // sent to the client.
     outgoingData: 0,
     keepAliveTimeoutSet: false
   }
@@ -376,7 +316,7 @@ function connectionListenerInternal (server, socket) {
 
   // We only consume the socket if it has never been consumed before.
   if (socket._handle) {
-    var external = socket._handle._externalStream
+    let external = socket._handle._externalStream
     if (!socket._handle._consumed && external) {
       parser._consumed = true
       socket._handle._consumed = true
@@ -391,66 +331,50 @@ function connectionListenerInternal (server, socket) {
 
 function updateOutgoingData (socket, state, delta) {
   state.outgoingData += delta
-  if (socket._paused &&
-      state.outgoingData < socket.writableHighWaterMark) {
+  if (socket._paused && state.outgoingData < socket.writableHighWaterMark) {
     return socketOnDrain(socket, state)
   }
 }
 
 function socketOnDrain (socket, state) {
-  var needPause = state.outgoingData > socket.writableHighWaterMark
+  let needPause = state.outgoingData > socket.writableHighWaterMark
 
-  // If we previously paused, then start reading again.
   if (socket._paused && !needPause) {
     socket._paused = false
-    if (socket.parser) { socket.parser.resume() }
+    if (socket.parser) socket.parser.resume()
     socket.resume()
   }
 }
 
-function ondrain () {
-  if (this._httpMessage) this._httpMessage.emit('drain')
-}
+function ondrain () { if (this._httpMessage) this._httpMessage.emit('drain') }
 
 function socketOnTimeout () {
-  var req = this.parser && this.parser.incoming
-  var reqTimeout = req && !req.complete && req.emit('timeout', this)
-  var res = this._httpMessage
-  var resTimeout = res && res.emit('timeout', this)
-  var serverTimeout = this.server.emit('timeout', this)
+  let req = this.parser && this.parser.incoming
+  let reqTimeout = req && !req.complete && req.emit('timeout', this)
+  let res = this._httpMessage
+  let resTimeout = res && res.emit('timeout', this)
+  let serverTimeout = this.server.emit('timeout', this)
 
-  if (!reqTimeout && !resTimeout && !serverTimeout) {
-    this.destroy()
-  }
+  if (!reqTimeout && !resTimeout && !serverTimeout) this.destroy()
 }
 
 function socketOnClose (socket, state) {
-  debug('server socket close')
-  // mark this parser as reusable
-  if (socket.parser) {
-    freeParser(socket.parser, null, socket)
-  }
-
+  if (socket.parser) freeParser(socket.parser, null, socket)
   abortIncoming(state.incoming)
 }
 
 function abortIncoming (incoming) {
   while (incoming.length) {
-    var req = incoming.shift()
+    let req = incoming.shift()
     req.emit('aborted')
     req.emit('close')
   }
-  // abort socket._httpMessage ?
 }
 
 function socketOnEnd (server, socket, parser, state) {
-  var ret = parser.finish()
+  let ret = parser.finish()
 
-  if (ret instanceof Error) {
-    debug('parse error')
-    socketOnError.call(socket, ret)
-    return
-  }
+  if (ret instanceof Error) return socketOnError.call(socket, ret)
 
   if (!server.httpAllowHalfOpen) {
     abortIncoming(state.incoming)
@@ -466,15 +390,12 @@ function socketOnEnd (server, socket, parser, state) {
 
 function socketOnData (server, socket, parser, state, d) {
   assert(!socket._paused)
-  debug('SERVER socketOnData %d', d.length)
-
-  var ret = parser.execute(d)
+  let ret = parser.execute(d)
   onParserExecuteCommon(server, socket, parser, state, ret, d)
 }
 
 function onParserExecute (server, socket, parser, state, ret) {
   socket._unrefTimer()
-  debug('SERVER socketOnParserExecute %d', ret)
   onParserExecuteCommon(server, socket, parser, state, ret, undefined)
 }
 
@@ -482,15 +403,11 @@ const badRequestResponse = Buffer.from(
   `HTTP/1.1 400 ${STATUS_CODES[400]}${CRLF}${CRLF}`, 'ascii'
 )
 function socketOnError (e) {
-  // Ignore further errors
   this.removeListener('error', socketOnError)
   this.on('error', () => {})
 
   if (!this.server.emit('clientError', e, this)) {
-    if (this.writable) {
-      this.end(badRequestResponse)
-      return
-    }
+    if (this.writable) return this.end(badRequestResponse)
     this.destroy(e)
   }
 }
@@ -500,17 +417,13 @@ function onParserExecuteCommon (server, socket, parser, state, ret, d) {
 
   if (ret instanceof Error) {
     ret.rawPacket = d || parser.getCurrentBuffer()
-    debug('parse error', ret)
     socketOnError.call(socket, ret)
   } else if (parser.incoming && parser.incoming.upgrade) {
     // Upgrade or CONNECT
-    var bytesParsed = ret
-    var req = parser.incoming
-    debug('SERVER upgrade or connect', req.method)
+    let bytesParsed = ret
+    let req = parser.incoming
 
-    if (!d) {
-      d = parser.getCurrentBuffer()
-    }
+    if (!d) d = parser.getCurrentBuffer()
 
     socket.removeListener('data', state.onData)
     socket.removeListener('end', state.onEnd)
@@ -523,47 +436,30 @@ function onParserExecuteCommon (server, socket, parser, state, ret, d) {
     freeParser(parser, req, null)
     parser = null
 
-    var eventName = req.method === 'CONNECT' ? 'connect' : 'upgrade'
+    let eventName = req.method === 'CONNECT' ? 'connect' : 'upgrade'
     if (server.listenerCount(eventName) > 0) {
-      debug('SERVER have listener for %s', eventName)
-      var bodyHead = d.slice(bytesParsed, d.length)
-
+      let bodyHead = d.slice(bytesParsed, d.length)
       socket.readableFlowing = null
       server.emit(eventName, req, socket, bodyHead)
     } else {
-      // Got upgrade header or CONNECT method, but have no handler.
       socket.destroy()
     }
   }
 
-  if (socket._paused && socket.parser) {
-    // onIncoming paused the socket, we should pause the parser as well
-    debug('pause parser')
-    socket.parser.pause()
-  }
+  if (socket._paused && socket.parser) socket.parser.pause()
 }
 
 function resOnFinish (req, res, socket, state, server) {
-  // Usually the first incoming element should be our request.  it may
-  // be that in the case abortIncoming() was called that the incoming
-  // array will be empty.
   assert(state.incoming.length === 0 || state.incoming[0] === req)
-
   state.incoming.shift()
 
-  // if the user never called req.read(), and didn't pipe() or
-  // .resume() or .on('data'), then we call req._dump() so that the
-  // bytes will be pulled off the wire.
-  if (!req._consuming && !req._readableState.resumeScheduled) { req._dump() }
+  if (!req._consuming && !req._readableState.resumeScheduled) req._dump()
 
   res.detachSocket(socket)
 
   if (res._last) {
-    if (typeof socket.destroySoon === 'function') {
-      socket.destroySoon()
-    } else {
-      socket.end()
-    }
+    let ender = typeof socket.destroySoon === 'function' ? 'destroySoon' : 'end'
+    socket[ender]()
   } else if (state.outgoing.length === 0) {
     if (server.keepAliveTimeout && typeof socket.setTimeout === 'function') {
       socket.setTimeout(0)
@@ -571,100 +467,62 @@ function resOnFinish (req, res, socket, state, server) {
       state.keepAliveTimeoutSet = true
     }
   } else {
-    // start sending the next message
-    var m = state.outgoing.shift()
-    if (m) {
-      m.assignSocket(socket)
-    }
+    let m = state.outgoing.shift()
+    if (m) m.assignSocket(socket)
   }
 }
 
-// The following callback is issued after the headers have been read on a
-// new message. In this callback we setup the response object and pass it
-// to the user.
 function parserOnIncoming (server, socket, state, req, keepAlive) {
   resetSocketTimeout(server, socket, state)
-
   state.incoming.push(req)
 
-  // If the writable end isn't consuming, then stop reading
-  // so that we don't become overwhelmed by a flood of
-  // pipelined requests that may never be resolved.
   if (!socket._paused) {
-    var ws = socket._writableState
+    let ws = socket._writableState
     if (ws.needDrain || state.outgoingData >= socket.writableHighWaterMark) {
       socket._paused = true
-      // We also need to pause the parser, but don't do that until after
-      // the call to execute, because we may still be processing the last
-      // chunk.
       socket.pause()
     }
   }
 
-  var res = new server[kServerResponse](req)
+  let res = new server[kServerResponse](req)
   res._onPendingData = updateOutgoingData.bind(undefined, socket, state)
-
   res.shouldKeepAlive = keepAlive
-  // DTRACE_HTTP_SERVER_REQUEST(req, socket)
-  // LTTNG_HTTP_SERVER_REQUEST(req, socket)
-  // COUNTER_HTTP_SERVER_REQUEST()
 
-  if (socket._httpMessage) {
-    // There are already pending outgoing res, append.
-    state.outgoing.push(res)
-  } else {
-    res.assignSocket(socket)
-  }
+  socket._httpMessage ? state.outgoing.push(res) : res.assignSocket(socket)
 
-  // When we're finished writing the response, check if this is the last
-  // response, if so destroy the socket.
-  res.on('finish',
-         resOnFinish.bind(undefined, req, res, socket, state, server))
+  res.on('finish', resOnFinish.bind(undefined, req, res, socket, state, server))
 
-  if (req.headers.expect !== undefined &&
-      (req.httpVersionMajor === 1 && req.httpVersionMinor === 1)) {
-    if (continueExpression.test(req.headers.expect)) {
-      res._expect_continue = true
-
-      if (server.listenerCount('checkContinue') > 0) {
-        server.emit('checkContinue', req, res)
-      } else {
-        res.writeContinue()
-        server.emit('request', req, res)
-      }
-    } else if (server.listenerCount('checkExpectation') > 0) {
-      server.emit('checkExpectation', req, res)
-    } else {
-      res.writeHead(417)
-      res.end()
-    }
-  } else {
+  let isHttpOneOne = req.httpVersionMajor === 1 && req.httpVersionMinor === 1
+  if (req.headers.expect === undefined || !isHttpOneOne) {
     server.emit('request', req, res)
+    return 0
+  }
+  if (continueExpression.test(req.headers.expect)) {
+    res._expect_continue = true
+
+    if (server.listenerCount('checkContinue') > 0) {
+      server.emit('checkContinue', req, res)
+    } else {
+      res.writeContinue()
+      server.emit('request', req, res)
+    }
+  } else if (server.listenerCount('checkExpectation') > 0) {
+    server.emit('checkExpectation', req, res)
+  } else {
+    res.writeHead(417)
+    res.end()
   }
   return 0  // No special treatment.
 }
 
 function resetSocketTimeout (server, socket, state) {
-  if (!state.keepAliveTimeoutSet) {
-    return
-  }
-
+  if (!state.keepAliveTimeoutSet) return
   socket.setTimeout(server.timeout || 0)
   state.keepAliveTimeoutSet = false
 }
 
 function onSocketResume () {
-  // It may seem that the socket is resumed, but this is an enemy's trick to
-  // deceive us! `resume` is emitted asynchronously, and may be called from
-  // `incoming.readStart()`. Stop the socket again here, just to preserve the
-  // state.
-  //
-  // We don't care about stream semantics for the consumed socket anyway.
-  if (this._paused) {
-    this.pause()
-    return
-  }
-
+  if (this._paused) return this.pause()
   if (this._handle && !this._handle.reading) {
     this._handle.reading = true
     this._handle.readStart()
@@ -679,23 +537,20 @@ function onSocketPause () {
 }
 
 function unconsume (parser, socket) {
-  if (socket._handle) {
-    if (parser._consumed) {
-      parser.unconsume()
-    }
-    parser._consumed = false
-    socket.removeListener('pause', onSocketPause)
-    socket.removeListener('resume', onSocketResume)
-  }
+  if (!socket._handle) return
+  if (parser._consumed) parser.unconsume()
+  parser._consumed = false
+  socket.removeListener('pause', onSocketPause)
+  socket.removeListener('resume', onSocketResume)
 }
 
 function socketOnWrap (ev, fn) {
-  var res = net.Socket.prototype.on.call(this, ev, fn)
+  let res = net.Socket.prototype.on.call(this, ev, fn)
   if (!this.parser) {
     this.on = net.Socket.prototype.on
     return res
   }
-  if (ev === 'data' || ev === 'readable') { unconsume(this.parser, this) }
+  if (ev === 'data' || ev === 'readable') unconsume(this.parser, this)
   return res
 }
 
