@@ -10,7 +10,8 @@
     "index.js"
   ],
   "scripts": {
-    "test": "ava --verbose"
+    "test": "ava --verbose",
+    "precommit": "ava"
   },
   "repository": {
     "type": "git",

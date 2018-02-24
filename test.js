@@ -7,7 +7,7 @@ import httpMinimal from './index'
 const benchId = 301
 const port = 3123
 
-test.skip(() => new Promise((resolve, reject) => {
+test.before(() => new Promise((resolve, reject) => {
   httpMinimal.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Benchmark', 'true')
@@ -15,8 +15,7 @@ test.skip(() => new Promise((resolve, reject) => {
   }).listen(port, () => resolve())
 }))
 
-test.skip('setHeader works', async (assert) => {
+test('setHeader works', async (assert) => {
   let { headers } = await axios(`http://localhost:${port}`)
-  console.log(headers)
-  assert.true(headers.benchmark)
+  assert.truthy(headers.benchmark)
 })
