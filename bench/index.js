@@ -68,11 +68,11 @@ const bencher = (title) => new Promise((resolve, reject) => {
   let acOpts = {
     url: urlTemplate(port, true),
     title,
-    connections: 50,
-    pipelining: 10
+    connections: 100,
+    pipelining: 25
   }
   autocannon(Object.assign({duration: 3}, acOpts), () => {
-    autocannon(Object.assign({duration: 7}, acOpts), done)
+    autocannon(Object.assign({duration: 15}, acOpts), done)
   })
 })
 
