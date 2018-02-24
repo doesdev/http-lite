@@ -1,6 +1,8 @@
-# http-minimal [![NPM version](https://badge.fury.io/js/http-minimal.svg)](https://npmjs.org/package/http-minimal)   [![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)   [![Dependency Status](https://dependencyci.com/github/doesdev/http-minimal/badge)](https://dependencyci.com/github/doesdev/http-minimal)
+# http-minimal [![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)   [![Dependency Status](https://dependencyci.com/github/doesdev/http-minimal/badge)](https://dependencyci.com/github/doesdev/http-minimal)
 
 > A minimalistic take on Node's `http` module
+
+# Exercise is done, there be nothing useful here. Use `http`
 
 Right now this is copy paste of the built-in http lib, with some extremely minor
 changes. There's no compelling reason to use this over the standard lib. It's

@@ -24,9 +24,9 @@ const kOnExecute = HTTPParser.kOnExecute | 0
 const defTimeout = 2 * 60 * 1000
 
 // symbols
-const outHeadersKey = Symbol('outHeadersKey')
-const asyncIdSymbol = Symbol('asyncId')
-const kServerResponse = Symbol('ServerResponse')
+const outHeadersKey = Symbol.for('outHeadersKey')
+const asyncIdSymbol = Symbol.for('asyncId')
+const kServerResponse = Symbol.for('ServerResponse')
 
 // async hook stuff from 'internal/async_hooks'
 const newAsyncId = () => ++async_id_fields[kAsyncIdCounter]

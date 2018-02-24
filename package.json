@@ -9,7 +9,9 @@
   "files": [
     "index.js"
   ],
-  "scripts": {},
+  "scripts": {
+    "test": "ava --verbose"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/doesdev/http-minimal.git"
