@@ -1,6 +1,6 @@
 {
   "name": "http-minimal",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A minimalistic take on Node's `http` module",
   "engines": {
     "node": ">=9.0.0"
