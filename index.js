@@ -22,6 +22,7 @@ const { async_id_fields, constants: asyncConsts } = process.binding('async_wrap'
 const { kAsyncIdCounter, kDefaultTriggerAsyncId } = asyncConsts
 const kOnExecute = HTTPParser.kOnExecute | 0
 const defTimeout = 2 * 60 * 1000
+const stringEncodings = {utf8: true, latin1: true}
 
 // symbols
 const outHeadersKey = Symbol('outHeadersKey')
@@ -113,6 +114,28 @@ const STATUS_CODES = {
   509: 'Bandwidth Limit Exceeded',
   510: 'Not Extended',               // RFC 2774
   511: 'Network Authentication Required' // RFC 6585
+}
+
+OutgoingMessage.prototype._send = function _send (data, encoding, callback) {
+  if (this._headerSent) return this._writeRaw(data, encoding, callback)
+  encoding = encoding || 'utf8'
+  this._headerSent = true
+  if (typeof data === 'string' && stringEncodings[encoding]) {
+    return this._writeRaw(this._header + data, encoding, callback)
+  }
+  let header = this._header
+  if (this.output.length === 0) {
+    this.output = [header]
+    this.outputEncodings = ['latin1']
+    this.outputCallbacks = [null]
+  } else {
+    this.output.unshift(header)
+    this.outputEncodings.unshift('latin1')
+    this.outputCallbacks.unshift(null)
+  }
+  this.outputSize += header.length
+  this._onPendingData(header.length)
+  return this._writeRaw(data, encoding, callback)
 }
 
 function ServerResponse (req) {
