@@ -3,7 +3,7 @@
 const { Server, ServerResponse } = require('_http_server')
 const { IncomingMessage } = require('_http_incoming')
 
-// override OutgoingMessage stuff
+// override ServerResponse stuff
 const stringEncodings = {utf8: true, latin1: true}
 ServerResponse.prototype._send = function _send (data, encoding, callback) {
   if (this._headerSent) return this._writeRaw(data, encoding, callback)
@@ -25,6 +25,93 @@ ServerResponse.prototype._send = function _send (data, encoding, callback) {
   this.outputSize += header.length
   this._onPendingData(header.length)
   return this._writeRaw(data, encoding, callback)
+}
+
+// const oldWriteHead = ServerResponse.prototype.writeHead
+// ServerResponse.prototype.writeHead = writeHead
+// function writeHead (statusCode, reason, obj) {
+//   return oldWriteHead.call(this, statusCode, reason, obj)
+// }
+
+const crlfBuf = Buffer.from('\r\n')
+function writeFromEnd (msg, chunk, encoding) {
+  if (msg.finished) {
+    const err = new Error('ERR_STREAM_WRITE_AFTER_END')
+    let boundEmit = this.emit.bind(this)
+    process.nextTick(boundEmit('error', err))
+    return true
+  }
+
+  if (!msg._header) msg._implicitHeader()
+  if (!msg._hasBody) return true
+  if (chunk.length === 0) return true
+
+  let len, ret
+  if (msg.chunkedEncoding) {
+    len = typeof chunk === 'string'
+      ? Buffer.byteLength(chunk, encoding)
+      : chunk.length
+    msg._send(len.toString(16), 'latin1', null)
+    msg._send(crlfBuf, null, null)
+    msg._send(chunk, encoding, null)
+    ret = msg._send(crlfBuf, null)
+  } else {
+    ret = msg._send(chunk, encoding)
+  }
+  return ret
+}
+
+function onFinish (outmsg) { outmsg.emit('finish') }
+
+ServerResponse.prototype.end = function end (chunk, encoding) {
+  if (this.finished) return this
+
+  let uncork
+  if (chunk) {
+    let chunkIsString = typeof chunk === 'string'
+    if (!chunkIsString && !(chunk instanceof Buffer)) {
+      throw new TypeError(
+        'ERR_INVALID_ARG_TYPE',
+        'first argument',
+        ['string', 'Buffer']
+      )
+    }
+    if (!this._header) {
+      this._contentLength = chunkIsString
+        ? Buffer.byteLength(chunk, encoding)
+        : chunk.length
+    }
+    if (this.connection) {
+      this.connection.cork()
+      uncork = true
+    }
+    writeFromEnd(this, chunk, encoding)
+  } else if (!this._header) {
+    this._contentLength = 0
+    this._implicitHeader()
+  }
+
+  var finish = onFinish.bind(undefined, this)
+
+  if (this._hasBody && this.chunkedEncoding) {
+    this._send('0\r\n' + this._trailer + '\r\n', 'latin1', finish)
+  } else {
+    this._send('', 'latin1', finish)
+  }
+
+  if (uncork) this.connection.uncork()
+
+  this.finished = true
+
+  if (
+    this.output.length === 0 &&
+    this.connection &&
+    this.connection._httpMessage === this
+  ) {
+    this._finish()
+  }
+
+  return this
 }
 
 // override IncomingMessage stuff

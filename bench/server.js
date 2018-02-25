@@ -3,9 +3,10 @@
 const { join } = require('path')
 const ports = {http: 3010, httpLite: 3011}
 const logStart = (n) => {
-  process.send(n)
+  let canSend = typeof process.send === 'function'
+  if (canSend) process.send(n)
   let { heapUsed, heapTotal } = process.memoryUsage()
-  process.send(`startMem${heapUsed}/${heapTotal}`)
+  if (canSend) process.send(`startMem${heapUsed}/${heapTotal}`)
 }
 process.on('message', (m) => {
   if (m === 'endMemory') {
