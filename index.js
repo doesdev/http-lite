@@ -36,29 +36,23 @@ ServerResponse.prototype._send = function _send (data, encoding, callback) {
 const crlfBuf = Buffer.from('\r\n')
 function writeFromEnd (msg, chunk, encoding) {
   if (msg.finished) {
-    const err = new Error('ERR_STREAM_WRITE_AFTER_END')
     let boundEmit = this.emit.bind(this)
-    process.nextTick(boundEmit('error', err))
+    process.nextTick(boundEmit('error', new Error('ERR_STREAM_WRITE_AFTER_END')))
     return true
   }
 
   if (!msg._header) msg._implicitHeader()
   if (!msg._hasBody) return true
   if (chunk.length === 0) return true
+  if (!msg.chunkedEncoding) return msg._send(chunk, encoding)
 
-  let len, ret
-  if (msg.chunkedEncoding) {
-    len = typeof chunk === 'string'
-      ? Buffer.byteLength(chunk, encoding)
-      : chunk.length
-    msg._send(len.toString(16), 'latin1', null)
-    msg._send(crlfBuf, null, null)
-    msg._send(chunk, encoding, null)
-    ret = msg._send(crlfBuf, null)
-  } else {
-    ret = msg._send(chunk, encoding)
-  }
-  return ret
+  let len = typeof chunk === 'string'
+    ? Buffer.byteLength(chunk, encoding)
+    : chunk.length
+  msg._send(len.toString(16), 'latin1', null)
+  msg._send(crlfBuf, null, null)
+  msg._send(chunk, encoding, null)
+  return msg._send(crlfBuf, null)
 }
 
 function onFinish (outmsg) { outmsg.emit('finish') }
@@ -91,10 +85,9 @@ ServerResponse.prototype.end = function end (chunk, encoding) {
     this._implicitHeader()
   }
 
-  var finish = onFinish.bind(undefined, this)
-
+  let finish = onFinish.bind(undefined, this)
   if (this._hasBody && this.chunkedEncoding) {
-    this._send('0\r\n' + this._trailer + '\r\n', 'latin1', finish)
+    this._send(`0\r\n${this._trailer}\r\n`, 'latin1', finish)
   } else {
     this._send('', 'latin1', finish)
   }
